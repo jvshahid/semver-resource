@@ -18,8 +18,8 @@ var gitRepoDir string
 var privateKeyPath string
 var netRcPath string
 
-var ErrEncryptedKey = errors.New("private keys with passphrases are not supported")
 var RetriesOnErrorWriteVersion = 3
+var ErrKey = errors.New("unable to process private key, is it password protected?")
 
 func init() {
 	gitRepoDir = filepath.Join(os.TempDir(), "semver-git-repo")
@@ -75,7 +75,7 @@ func (driver *GitDriver) Bump(bump version.Bump) (semver.Version, error) {
 		wrote, err := driver.writeVersion(newVersion)
 		if wrote {
 			break
-		} 
+		}
 	}
 	if err != nil {
 		return semver.Version{}, err
@@ -237,7 +237,7 @@ func (driver *GitDriver) setUpKey() error {
 	}
 
 	if isPrivateKeyEncrypted(privateKeyPath) {
-		return ErrEncryptedKey
+		return ErrKey
 	}
 
 	return os.Setenv("GIT_SSH_COMMAND", "ssh -o StrictHostKeyChecking=no -i "+privateKeyPath)
@@ -245,11 +245,14 @@ func (driver *GitDriver) setUpKey() error {
 
 func isPrivateKeyEncrypted(path string) bool {
 	chmod := exec.Command("chmod", "400", path)
-	output, err := chmod.CombinedOutput()
+	_, err := chmod.CombinedOutput()
 
-	cat := exec.Command("cat", path)
-	output, err = cat.CombinedOutput()
-	println("key: " + string(output))
+	if err != nil {
+		return false
+	}
+
+	cleanup := exec.Command("echo", "''", ">>", path)
+	_, err = cleanup.CombinedOutput()
 
 	if err != nil {
 		return false
@@ -257,8 +260,7 @@ func isPrivateKeyEncrypted(path string) bool {
 
 	passphrase := ``
 	cmd := exec.Command("ssh-keygen", "-y", "-f", path, "-P", passphrase)
-	output, err = cmd.CombinedOutput()
-	println(string(output))
+	err = cmd.Run()
 
 	if err != nil {
 		println("Error attempting to access private key. ", err.Error())
@@ -345,13 +347,13 @@ const pushRemoteRejectedString = "[remote rejected]"
 
 func (driver *GitDriver) writeVersion(newVersion semver.Version) (bool, error) {
 
-    path := filepath.Dir(driver.File)
-    if path != "/" && path != "." {
-        err := os.MkdirAll(filepath.Join(gitRepoDir, path), 0755)
-        if err != nil {
-            return false, err
-        }
-    }
+	path := filepath.Dir(driver.File)
+	if path != "/" && path != "." {
+		err := os.MkdirAll(filepath.Join(gitRepoDir, path), 0755)
+		if err != nil {
+			return false, err
+		}
+	}
 
 	err := ioutil.WriteFile(filepath.Join(gitRepoDir, driver.File), []byte(newVersion.String()+"\n"), 0644)
 	if err != nil {
