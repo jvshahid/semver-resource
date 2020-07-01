@@ -18,8 +18,8 @@ var gitRepoDir string
 var privateKeyPath string
 var netRcPath string
 
+var ErrEncryptedKey = errors.New("private keys with passphrases are not supported")
 var RetriesOnErrorWriteVersion = 3
-var ErrKey = errors.New("unable to process private key, is it password protected?")
 
 func init() {
 	gitRepoDir = filepath.Join(os.TempDir(), "semver-git-repo")
@@ -237,7 +237,7 @@ func (driver *GitDriver) setUpKey() error {
 	}
 
 	if isPrivateKeyEncrypted(privateKeyPath) {
-		return ErrKey
+		return ErrEncryptedKey
 	}
 
 	return os.Setenv("GIT_SSH_COMMAND", "ssh -o StrictHostKeyChecking=no -i "+privateKeyPath)
